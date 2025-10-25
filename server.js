@@ -9,7 +9,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://react-odoo-demo.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
@@ -23,6 +23,7 @@ const PASSWORD = process.env.ODOO_PASSWORD || 'admin';
 console.log('🚀 Backend Proxy Starting');
 console.log('Odoo URL:', ODOO_URL);
 console.log('Database:', DB);
+console.log('Node Environment:', process.env.NODE_ENV || 'development');
 
 // Create axios instance with cookie jar for session management
 const cookieJar = new CookieJar();
@@ -33,6 +34,22 @@ const odooClient = wrapper(axios.create({
 }));
 
 let sessionId = null;
+
+// ============ Routes ============
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'running',
+    message: 'Odoo API Proxy Server',
+    endpoints: {
+      health: '/health',
+      authenticate: 'POST /api/authenticate',
+      create_contact: 'POST /api/create-contact',
+      fetch_contacts: 'GET /api/contacts'
+    }
+  });
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -80,6 +97,11 @@ app.post('/api/create-contact', async (req, res) => {
   try {
     const { name, phone } = req.body;
     console.log('📝 Creating contact:', { name, phone });
+
+    // Validate input
+    if (!name || !phone) {
+      return res.status(400).json({ error: 'Name and phone are required' });
+    }
 
     // Authenticate first to get session
     console.log('  Authenticating...');
@@ -133,7 +155,6 @@ app.post('/api/create-contact', async (req, res) => {
     }
   } catch (error) {
     console.error('❌ Create error:', error.message);
-    console.error('Full error:', error);
     res.status(500).json({ 
       error: 'Failed to create contact',
       message: error.message 
@@ -189,10 +210,30 @@ app.get('/api/contacts', async (req, res) => {
   }
 });
 
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Not found',
+    message: 'This endpoint does not exist',
+    path: req.path
+  });
+});
+
+// Error handler
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
+});
+
 // Start server
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✓ Backend proxy running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Ready to accept requests from React app`);
+  console.log(`API docs: http://localhost:${PORT}/`);
+  console.log(`Ready to accept requests`);
 });
